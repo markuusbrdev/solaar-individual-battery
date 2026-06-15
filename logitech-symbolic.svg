@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="24px" viewBox="0 0 100 60" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <g fill="currentColor" transform="translate(8, 10)">
+        <!-- l -->
+        <rect x="0" y="0" width="8" height="35" rx="2" />
+        
+        <!-- o -->
+        <path d="M 25 10 C 12 10, 12 35, 25 35 C 38 35, 38 10, 25 10 Z M 25 18 C 30 18, 30 27, 25 27 C 20 27, 20 18, 25 18 Z" />
+        
+        <!-- g (top circle) -->
+        <path d="M 52 10 C 39 10, 39 35, 52 35 C 65 35, 65 10, 52 10 Z M 52 18 C 57 18, 57 27, 52 27 C 47 27, 47 18, 52 18 Z" />
+        <!-- g (right stem) -->
+        <rect x="55" y="10" width="7" height="25" />
+        
+        <!-- smile / bottom of g -->
+        <path d="M 43 38 C 43 55, 64 55, 64 38 L 56 38 C 56 46, 51 46, 51 38 Z" />
+        
+        <!-- i (dot) -->
+        <circle cx="75" cy="4" r="4" />
+        <!-- i (stem) -->
+        <rect x="71" y="10" width="8" height="25" rx="2" />
+    </g>
+</svg>
