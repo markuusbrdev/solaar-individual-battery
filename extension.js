@@ -103,6 +103,7 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
 export default class SolaarBatteryExtension extends Extension {
     enable() {
         this._timeoutId = null;
+        this._indicators = {}; // Referência para os indicadores da barra superior (PanelMenu)
 
         // Instanciar o botão (Pílula) do Quick Settings
         this._solaarToggle = new SolaarToggle();
@@ -127,10 +128,18 @@ export default class SolaarBatteryExtension extends Extension {
             this._timeoutId = null;
         }
 
-        // Remover do painel do GNOME para evitar memory leaks/duplicação
+        // Remover pílula do Quick Settings
         if (this._solaarToggle) {
             this._solaarToggle.destroy();
             this._solaarToggle = null;
+        }
+
+        // Remover os indicadores da barra superior (Panel)
+        if (this._indicators) {
+            for (let name in this._indicators) {
+                this._indicators[name].destroy();
+            }
+            this._indicators = {};
         }
     }
 
@@ -155,7 +164,10 @@ export default class SolaarBatteryExtension extends Extension {
             if (stdout) {
                 const devices = this._parseSolaarOutput(stdout);
                 
-                // Enviar os dados do polling para o Quick Toggle processar
+                // 1. Atualizar a Barra Superior (Panel)
+                this._updateTopPanelUI(devices);
+
+                // 2. Atualizar a pílula do Quick Settings
                 if (this._solaarToggle) {
                     this._solaarToggle.updateDevices(devices, this._getBatteryIconName.bind(this));
                 }
@@ -203,5 +215,108 @@ export default class SolaarBatteryExtension extends Extension {
         }
         iconName += '-symbolic';
         return iconName;
+    }
+
+    _updateTopPanelUI(devices) {
+        // 1. Remover indicadores de dispositivos desconectados da barra superior
+        for (let name in this._indicators) {
+            if (!devices[name]) {
+                this._indicators[name].destroy();
+                delete this._indicators[name];
+            }
+        }
+
+        // 2. Criar ou atualizar os indicadores no painel superior
+        for (let name in devices) {
+            const batteryData = devices[name];
+            
+            if (!this._indicators[name]) {
+                this._indicators[name] = this._createTopPanelIndicator(name, batteryData);
+                const roleId = `solaar-battery-${name.replace(/\s+/g, '-')}`;
+                Main.panel.addToStatusArea(roleId, this._indicators[name], 1);
+            } else {
+                const indicator = this._indicators[name];
+                indicator.batteryPercentage = batteryData.percentage;
+                indicator.isCharging = batteryData.isCharging;
+                
+                // Atualiza o ícone de bateria
+                indicator.batteryIcon.set_icon_name(this._getBatteryIconName(batteryData.percentage, batteryData.isCharging));
+                
+                // Se o mouse estiver em cima durante a atualização, mantemos o texto atualizado
+                if (indicator.hover) {
+                    indicator.batteryLabel.set_text(`${name}: ${batteryData.percentage}%`);
+                }
+            }
+        }
+    }
+
+    _createTopPanelIndicator(name, batteryData) {
+        const indicator = new PanelMenu.Button(0.0, `Solaar Battery - ${name}`, true);
+        
+        const box = new St.BoxLayout({
+            vertical: false,
+            style_class: 'panel-status-indicators-box'
+        });
+
+        // 1. Ícone do dispositivo (Teclado/Mouse)
+        const lowerName = name.toLowerCase();
+        let deviceIconName = 'input-mouse-symbolic';
+        if (lowerName.includes('key') || lowerName.includes('board')) {
+            deviceIconName = 'input-keyboard-symbolic';
+        }
+
+        const deviceIcon = new St.Icon({
+            icon_name: deviceIconName,
+            style_class: 'system-status-icon'
+        });
+
+        // 2. Ícone dinâmico da bateria nativo do GNOME
+        const batteryIcon = new St.Icon({
+            icon_name: this._getBatteryIconName(batteryData.percentage, batteryData.isCharging),
+            style_class: 'system-status-icon',
+            style: 'margin-left: 2px;'
+        });
+
+        // 3. Rótulo oculto (Texto flutuante para Tooltip nativo improvisado)
+        const label = new St.Label({
+            text: `${name}: ${batteryData.percentage}%`,
+            y_align: Clutter.ActorAlign.CENTER,
+            style: 'margin-left: 6px; font-weight: bold;'
+        });
+        label.hide(); // Esconde por padrão para manter a barra limpa
+
+        box.add_child(deviceIcon);
+        box.add_child(batteryIcon);
+        box.add_child(label);
+        indicator.add_child(box);
+        
+        // Referências
+        indicator.batteryLabel = label;
+        indicator.batteryIcon = batteryIcon;
+        indicator.deviceName = name;
+        indicator.batteryPercentage = batteryData.percentage;
+        indicator.isCharging = batteryData.isCharging;
+
+        // Mostrar texto no hover (estilo tooltip flutuante expandindo a barra)
+        indicator.connect('notify::hover', () => {
+            if (indicator.hover) {
+                indicator.batteryLabel.set_text(`${indicator.deviceName}: ${indicator.batteryPercentage}%`);
+                indicator.batteryLabel.show();
+            } else {
+                indicator.batteryLabel.hide();
+            }
+        });
+
+        // Abrir Solaar ao clicar
+        indicator.connect('button-release-event', () => {
+            try {
+                Gio.Subprocess.new(['solaar'], Gio.SubprocessFlags.NONE);
+            } catch (e) {
+                console.error(`[Solaar Individual Battery] Erro ao abrir janela do Solaar: ${e.message}`);
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        return indicator;
     }
 }
