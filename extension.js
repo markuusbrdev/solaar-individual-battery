@@ -92,9 +92,19 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
             this.set_subtitle(`${count} Dispositivo${count > 1 ? 's' : ''}`);
         }
 
-        // Separador e Botão Abrir Solaar (Estilo nativo de Configurações)
+        // Separador e Botão Abrir Solaar (Estilo nativo de Configurações, garantido de renderizar)
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this.menu.addSettingsAction('Abrir Solaar', 'solaar.desktop');
+        const openSolaarItem = new PopupMenu.PopupMenuItem('Abrir Solaar');
+        openSolaarItem.connect('activate', () => {
+            try {
+                Gio.Subprocess.new(['solaar'], Gio.SubprocessFlags.NONE);
+                Main.overview.hide(); // Fecha a visão geral (se estiver aberta)
+                Main.panel.closeCalendar(); // Recolhe o menu do Quick Settings
+            } catch (e) {
+                console.error(`[Solaar Individual Battery] Erro ao abrir Solaar: ${e.message}`);
+            }
+        });
+        this.menu.addMenuItem(openSolaarItem);
     }
 });
 
@@ -271,10 +281,14 @@ export default class SolaarBatteryExtension extends Extension {
     }
 
     _getBatteryIconName(percentage, isCharging) {
-        let rounded = Math.round(percentage / 10) * 10;
-        rounded = Math.max(0, Math.min(100, rounded)); // Segurança
-        
-        let iconName = `battery-level-${rounded}`;
+        // Usa os ícones verticais clássicos (estilo "pilha") para periféricos
+        let iconName = 'battery-';
+        if (percentage >= 80) iconName += 'full';
+        else if (percentage >= 50) iconName += 'good';
+        else if (percentage >= 20) iconName += 'low';
+        else if (percentage >= 10) iconName += 'caution';
+        else iconName += 'empty';
+
         if (isCharging) {
             iconName += '-charging';
         }
