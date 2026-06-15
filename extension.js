@@ -52,12 +52,9 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
             // Usamos um Item de menu nativo para garantir a renderização correta dentro do Quick Settings
             const item = new PopupMenu.PopupImageMenuItem(name, deviceIconName);
             
-            // Texto da Porcentagem da Bateria (Right aligned)
-            const batteryText = new St.Label({
-                text: `${batteryData.percentage}%`,
-                y_align: Clutter.ActorAlign.CENTER,
-            });
-
+            // Fazer a label principal expandir para empurrar o resto para a direita
+            item.label.x_expand = true;
+            
             // Ícone Dinâmico da Bateria Nativo
             const batteryIconName = getBatteryIconNameFn(batteryData.percentage, batteryData.isCharging);
             const batteryIcon = new St.Icon({
@@ -65,12 +62,22 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
                 style_class: 'popup-menu-icon'
             });
 
-            const batteryBox = new St.BoxLayout({ vertical: false, style_class: 'popup-menu-icon' });
-            batteryBox.add_child(batteryText);
+            // Texto da Porcentagem da Bateria
+            const batteryText = new St.Label({
+                text: `${batteryData.percentage}%`,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+
+            // Caixa que segura [Ícone] [Porcentagem]
+            const batteryBox = new St.BoxLayout({ 
+                vertical: false, 
+                style: 'spacing: 4px;' 
+            });
             batteryBox.add_child(batteryIcon);
+            batteryBox.add_child(batteryText);
             
-            // Inserir os elementos de bateria no final do MenuItem
-            item.insert_child_at_index(batteryBox, item.get_n_children());
+            // Inserir a caixa à extrema direita do item
+            item.add_child(batteryBox);
 
             this.menu.addMenuItem(item);
         }
@@ -85,19 +92,9 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
             this.set_subtitle(`${count} Dispositivo${count > 1 ? 's' : ''}`);
         }
 
-        // Separador e Botão Abrir Solaar
+        // Separador e Botão Abrir Solaar (Estilo nativo de Configurações)
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const openSolaarItem = new PopupMenu.PopupImageMenuItem('Abrir Solaar', 'preferences-system-symbolic');
-        openSolaarItem.connect('activate', () => {
-            try {
-                Gio.Subprocess.new(['solaar'], Gio.SubprocessFlags.NONE);
-                Main.overview.hide(); // Fecha a visão geral (se estiver aberta)
-                Main.panel.closeCalendar(); // Recolhe o menu do Quick Settings
-            } catch (e) {
-                console.error(`[Solaar Individual Battery] Erro ao abrir Solaar: ${e.message}`);
-            }
-        });
-        this.menu.addMenuItem(openSolaarItem);
+        this.menu.addSettingsAction('Abrir Solaar', 'solaar.desktop');
     }
 });
 
@@ -127,7 +124,8 @@ class SolaarIndicator extends QuickSettings.SystemIndicator {
             if (!this._deviceBoxes[name]) {
                 const box = new St.BoxLayout({
                     vertical: false,
-                    style_class: 'panel-status-indicators-box',
+                    // Ajustamos o espaçamento para assemelhar a uma "pílula" coesa (ícones colados)
+                    style: 'spacing: 0px; margin-right: 4px;'
                 });
 
                 // Ícone do dispositivo (Teclado/Mouse)
@@ -139,13 +137,15 @@ class SolaarIndicator extends QuickSettings.SystemIndicator {
 
                 const deviceIcon = new St.Icon({
                     icon_name: deviceIconName,
-                    style_class: 'system-status-icon'
+                    style_class: 'system-status-icon',
+                    style: 'margin-right: 1px;' // Traz a bateria para bem perto
                 });
 
                 // Ícone dinâmico da bateria nativo
                 const batteryIcon = new St.Icon({
                     icon_name: getBatteryIconNameFn(batteryData.percentage, batteryData.isCharging),
                     style_class: 'system-status-icon',
+                    style: 'margin-left: 1px;' // Traz a bateria para bem perto
                 });
 
                 box.add_child(deviceIcon);
