@@ -3,10 +3,10 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import Cairo from 'gi://cairo';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // Definição do novo botão de Quick Settings (Pílula)
@@ -21,7 +21,6 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
         // Ativar o toggle para que ele fique com a cor de destaque (azul/padrão do sistema)
         this.checked = true;
 
-        // Tentar usar o ícone L customizado da Logitech, senão faz fallback para engrenagem
         const iconPath = extensionPath + '/logitech-symbolic.svg';
         const file = Gio.File.new_for_path(iconPath);
         if (file.query_exists(null)) {
@@ -34,7 +33,6 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
     }
 
     updateDevices(devices, getBatteryIconNameFn) {
-        // Limpar itens antigos (mantém o cabeçalho no GNOME)
         this.menu.removeAll();
 
         let count = 0;
@@ -42,33 +40,26 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
             count++;
             const batteryData = devices[name];
             
-            // Ícone do dispositivo (Teclado/Mouse)
             const lowerName = name.toLowerCase();
             let deviceIconName = 'input-mouse-symbolic';
             if (lowerName.includes('key') || lowerName.includes('board')) {
                 deviceIconName = 'input-keyboard-symbolic';
             }
 
-            // Usamos um Item de menu nativo para garantir a renderização correta dentro do Quick Settings
             const item = new PopupMenu.PopupImageMenuItem(name, deviceIconName);
-            
-            // Fazer a label principal expandir para empurrar o resto para a direita
             item.label.x_expand = true;
             
-            // Ícone Dinâmico da Bateria Nativo
             const batteryIconName = getBatteryIconNameFn(batteryData.percentage, batteryData.isCharging);
             const batteryIcon = new St.Icon({
                 icon_name: batteryIconName,
                 style_class: 'popup-menu-icon'
             });
 
-            // Texto da Porcentagem da Bateria
             const batteryText = new St.Label({
                 text: `${batteryData.percentage}%`,
                 y_align: Clutter.ActorAlign.CENTER,
             });
 
-            // Caixa que segura [Ícone] [Porcentagem]
             const batteryBox = new St.BoxLayout({ 
                 vertical: false, 
                 style: 'spacing: 4px;' 
@@ -76,13 +67,10 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
             batteryBox.add_child(batteryIcon);
             batteryBox.add_child(batteryText);
             
-            // Inserir a caixa à extrema direita do item
             item.add_child(batteryBox);
-
             this.menu.addMenuItem(item);
         }
 
-        // Atualizar subtítulo da pílula (ex: "2 Dispositivos")
         if (count === 0) {
             this.set_subtitle('Desconectado');
             const emptyItem = new PopupMenu.PopupMenuItem('Nenhum dispositivo encontrado');
@@ -98,8 +86,8 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
         openSolaarItem.connect('activate', () => {
             try {
                 Gio.Subprocess.new(['solaar'], Gio.SubprocessFlags.NONE);
-                Main.overview.hide(); // Fecha a visão geral (se estiver aberta)
-                Main.panel.closeCalendar(); // Recolhe o menu do Quick Settings
+                Main.overview.hide(); 
+                Main.panel.closeCalendar(); 
             } catch (e) {
                 console.error(`[Solaar Individual Battery] Erro ao abrir Solaar: ${e.message}`);
             }
@@ -108,73 +96,178 @@ class SolaarToggle extends QuickSettings.QuickMenuToggle {
     }
 });
 
-// Wrapper SystemIndicator necessário no GNOME 44/45+ para ancorar a Pílula e seu Submenu corretamente
+// Wrapper SystemIndicator necessário no GNOME 44/45+
 const SolaarIndicator = GObject.registerClass(
 class SolaarIndicator extends QuickSettings.SystemIndicator {
-    _init(extensionPath) {
+    _init(extensionPath, settings) {
         super._init();
+        this._settings = settings;
         this.toggle = new SolaarToggle(extensionPath);
         this.quickSettingsItems.push(this.toggle);
-        this._deviceBoxes = {}; // Referência para as caixas de ícones na barra superior
+        this._deviceBoxes = {}; 
+        this._tooltips = {}; // Gerenciar tooltips
+    }
+
+    _showTooltip(box, name, percentage) {
+        if (this._tooltips[name]) {
+            this._tooltips[name].destroy();
+        }
+        
+        const tooltip = new St.Label({
+            text: `${name}: ${percentage}%`,
+            style: 'background-color: rgba(0,0,0,0.8); color: white; border-radius: 4px; padding: 4px 8px; font-size: 13px;'
+        });
+
+        Main.layoutManager.addChrome(tooltip);
+        
+        const [x, y] = box.get_transformed_position();
+        const [width, height] = box.get_transformed_size();
+        
+        tooltip.set_position(Math.floor(x + width / 2 - tooltip.width / 2), Math.floor(y + height + 5));
+        this._tooltips[name] = tooltip;
+    }
+
+    _hideTooltip(name) {
+        if (this._tooltips[name]) {
+            Main.layoutManager.removeChrome(this._tooltips[name]);
+            this._tooltips[name].destroy();
+            delete this._tooltips[name];
+        }
+    }
+
+    _createCairoIndicator(percentage, isCharging, styleType) {
+        const areaWidth = 16;
+        const areaHeight = styleType === 'dots' ? 6 : 16;
+        
+        const area = new St.DrawingArea({
+            width: areaWidth,
+            height: areaHeight,
+            style_class: styleType === 'dots' ? '' : 'system-status-icon',
+            style: styleType === 'dots' ? 'margin-top: 1px;' : '',
+            x_expand: false,
+            x_align: Clutter.ActorAlign.CENTER
+        });
+
+        area.connect('repaint', (area) => {
+            const cr = area.get_context();
+            const [width, height] = area.get_surface_size();
+            const cx = width / 2;
+            const cy = height / 2;
+
+            let r = 1, g = 1, b = 1;
+            if (percentage <= 10) { r = 1; g = 0; b = 0; }
+            else if (percentage <= 20) { r = 1; g = 0.5; b = 0; }
+            else if (isCharging) { r = 0; g = 1; b = 0; }
+
+            if (styleType === 'circle') {
+                cr.setLineWidth(1.5);
+                cr.setSourceRGBA(1, 1, 1, 0.2);
+                cr.arc(cx, cy, 6, 0, 2 * Math.PI);
+                cr.stroke();
+
+                const angle = (percentage / 100) * 2 * Math.PI;
+                cr.setSourceRGBA(r, g, b, 1);
+                cr.arc(cx, cy, 6, -0.5 * Math.PI, -0.5 * Math.PI + angle);
+                cr.stroke();
+            } else if (styleType === 'dots') {
+                const solidDots = Math.ceil(percentage / 25);
+                for (let i = 0; i < 4; i++) {
+                    const x = 2 + (i * 4);
+                    const y = 3;
+                    cr.arc(x, y, 1.5, 0, 2 * Math.PI);
+                    if (i < solidDots) {
+                        cr.setSourceRGBA(1, 1, 1, 1);
+                    } else {
+                        cr.setSourceRGBA(1, 1, 1, 0.3);
+                    }
+                    cr.fill();
+                }
+            }
+            cr.$dispose();
+        });
+
+        return area;
     }
 
     updateTopPanelUI(devices, getBatteryIconNameFn) {
-        // 1. Remover indicadores de dispositivos desconectados
+        const indicatorStyle = this._settings.get_string('indicator-style');
+
         for (let name in this._deviceBoxes) {
             if (!devices[name]) {
+                this._hideTooltip(name);
                 this._deviceBoxes[name].destroy();
                 delete this._deviceBoxes[name];
             }
         }
 
-        // 2. Criar ou atualizar indicadores para cada dispositivo
         for (let name in devices) {
             const batteryData = devices[name];
             
-            if (!this._deviceBoxes[name]) {
-                const box = new St.BoxLayout({
-                    vertical: false,
-                    // Ajustamos o espaçamento para assemelhar a uma "pílula" coesa (ícones colados)
-                    style: 'spacing: 0px; margin-right: 4px;'
-                });
+            if (this._deviceBoxes[name]) {
+                this._hideTooltip(name);
+                this._deviceBoxes[name].destroy();
+                delete this._deviceBoxes[name];
+            }
 
-                // Ícone do dispositivo (Teclado/Mouse)
-                const lowerName = name.toLowerCase();
-                let deviceIconName = 'input-mouse-symbolic';
-                if (lowerName.includes('key') || lowerName.includes('board')) {
-                    deviceIconName = 'input-keyboard-symbolic';
-                }
+            const isDots = indicatorStyle === 'dots';
+            
+            const box = new St.BoxLayout({
+                vertical: isDots,
+                x_align: isDots ? Clutter.ActorAlign.CENTER : undefined,
+                y_align: Clutter.ActorAlign.CENTER,
+                y_expand: true,
+                style: 'spacing: 0px; margin-right: 4px;',
+                reactive: true // Necessário para tooltips
+            });
 
-                const deviceIcon = new St.Icon({
-                    icon_name: deviceIconName,
-                    style_class: 'system-status-icon',
-                    style: 'margin-right: 1px;' // Traz a bateria para bem perto
-                });
+            // Lógica de Tooltip
+            box.connect('enter-event', () => {
+                this._showTooltip(box, name, batteryData.percentage);
+            });
+            box.connect('leave-event', () => {
+                this._hideTooltip(name);
+            });
 
-                // Ícone dinâmico da bateria nativo
+            const lowerName = name.toLowerCase();
+            let deviceIconName = 'input-mouse-symbolic';
+            if (lowerName.includes('key') || lowerName.includes('board')) {
+                deviceIconName = 'input-keyboard-symbolic';
+            }
+
+            const iconProps = {
+                icon_name: deviceIconName,
+                style_class: 'system-status-icon',
+                style: isDots ? 'icon-size: 14px; margin-top: 2px;' : 'icon-size: 14px; margin-top: 1px; margin-right: 1px;'
+            };
+            if (isDots) {
+                iconProps.x_align = Clutter.ActorAlign.CENTER;
+            } else {
+                iconProps.y_align = Clutter.ActorAlign.CENTER;
+            }
+            const deviceIcon = new St.Icon(iconProps);
+
+            box.add_child(deviceIcon);
+
+            if (isDots) {
+                const cairoArea = this._createCairoIndicator(batteryData.percentage, batteryData.isCharging, indicatorStyle);
+                box.add_child(cairoArea);
+            } else if (indicatorStyle === 'circle') {
+                const cairoArea = this._createCairoIndicator(batteryData.percentage, batteryData.isCharging, indicatorStyle);
+                cairoArea.y_align = Clutter.ActorAlign.CENTER;
+                box.add_child(cairoArea);
+            } else {
                 const batteryIcon = new St.Icon({
                     icon_name: getBatteryIconNameFn(batteryData.percentage, batteryData.isCharging),
                     style_class: 'system-status-icon',
-                    style: 'margin-left: 1px;' // Traz a bateria para bem perto
+                    style: 'margin-left: 1px;',
+                    y_align: Clutter.ActorAlign.CENTER
                 });
-
-                box.add_child(deviceIcon);
                 box.add_child(batteryIcon);
-                
-                // Salvar referência para atualizar depois sem recriar
-                box._batteryIcon = batteryIcon;
-                
-                this._deviceBoxes[name] = box;
-                
-                // Adiciona este conjunto de ícones diretamente ao SystemIndicator (Barra superior unificada)
-                this.add_child(box);
-                box.connect('notify::visible', () => this._syncIndicatorsVisible());
-                
-            } else {
-                // Atualizar o ícone de bateria existente
-                const box = this._deviceBoxes[name];
-                box._batteryIcon.set_icon_name(getBatteryIconNameFn(batteryData.percentage, batteryData.isCharging));
             }
+            
+            this._deviceBoxes[name] = box;
+            this.add_child(box);
+            box.connect('notify::visible', () => this._syncIndicatorsVisible());
         }
 
         this._syncIndicatorsVisible();
@@ -183,42 +276,51 @@ class SolaarIndicator extends QuickSettings.SystemIndicator {
 
 export default class SolaarBatteryExtension extends Extension {
     enable() {
+        this._settings = this.getSettings('org.gnome.shell.extensions.solaar-individual-battery');
         this._timeoutId = null;
 
-        // Instanciar o SystemIndicator que engloba a pílula e os ícones da barra
-        this._solaarIndicator = new SolaarIndicator(this.dir.get_path());
-
-        // Injetar no menu de sistema do GNOME de forma moderna através do addExternalIndicator
+        this._solaarIndicator = new SolaarIndicator(this.dir.get_path(), this._settings);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._solaarIndicator);
 
-        // Primeira chamada manual para exibir imediatamente ao habilitar
         this._updateBatteries();
         
-        // Loop a cada 120 segundos (2 minutos)
         this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 120, () => {
             this._updateBatteries();
             return GLib.SOURCE_CONTINUE;
         });
+
+        // Escutar as mudanças nas preferências
+        this._settingsSignal = this._settings.connect('changed::indicator-style', () => {
+            this._updateBatteries();
+        });
     }
 
     disable() {
-        // Remover timeout do GLib
         if (this._timeoutId) {
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = null;
         }
 
-        // Remover SystemIndicator (limpa a barra e o Quick Settings automaticamente)
+        if (this._settingsSignal) {
+            this._settings.disconnect(this._settingsSignal);
+            this._settingsSignal = null;
+        }
+
         if (this._solaarIndicator) {
+            // Limpar tooltips
+            for (let name in this._solaarIndicator._tooltips) {
+                this._solaarIndicator._hideTooltip(name);
+            }
             this._solaarIndicator.quickSettingsItems.forEach(item => item.destroy());
             this._solaarIndicator.destroy();
             this._solaarIndicator = null;
         }
+
+        this._settings = null;
     }
 
     async _updateBatteries() {
         try {
-            // Subprocesso assíncrono mantido puro
             const proc = Gio.Subprocess.new(
                 ['solaar', 'show'],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
@@ -238,10 +340,8 @@ export default class SolaarBatteryExtension extends Extension {
                 const devices = this._parseSolaarOutput(stdout);
                 
                 if (this._solaarIndicator) {
-                    // 1. Atualizar a Barra Superior (dentro do cluster do Quick Settings)
                     this._solaarIndicator.updateTopPanelUI(devices, this._getBatteryIconName.bind(this));
                     
-                    // 2. Atualizar a pílula do Quick Settings
                     if (this._solaarIndicator.toggle) {
                         this._solaarIndicator.toggle.updateDevices(devices, this._getBatteryIconName.bind(this));
                     }
@@ -266,7 +366,6 @@ export default class SolaarBatteryExtension extends Extension {
                 let match = line.match(/Battery:\s*(\d+)%/);
                 if (match) {
                     let lowerLine = line.toLowerCase();
-                    // Considera carregando se houver "charging" ou "recharging" e não "discharging"
                     let isCharging = !lowerLine.includes('discharging') && lowerLine.includes('charging');
                     
                     devices[currentDevice] = {
@@ -281,7 +380,6 @@ export default class SolaarBatteryExtension extends Extension {
     }
 
     _getBatteryIconName(percentage, isCharging) {
-        // Usa os ícones verticais clássicos (estilo "pilha") para periféricos
         let iconName = 'battery-';
         if (percentage >= 80) iconName += 'full';
         else if (percentage >= 50) iconName += 'good';

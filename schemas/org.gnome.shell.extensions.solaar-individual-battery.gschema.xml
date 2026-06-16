@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.solaar-individual-battery" path="/org/gnome/shell/extensions/solaar-individual-battery/">
+    <key name="indicator-style" type="s">
+      <default>'standard'</default>
+      <summary>Indicator Style</summary>
+      <description>The visual style of the battery indicator. Options are 'standard' (icon), 'dots', or 'circle'.</description>
+    </key>
+  </schema>
+</schemalist>
