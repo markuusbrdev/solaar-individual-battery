@@ -2,6 +2,9 @@
 
 A modern, native GNOME Shell extension (designed specifically for GNOME 45+ / 50 on Wayland) that seamlessly integrates your Logitech peripherals' battery status into the GNOME desktop. It reads directly from the `solaar` CLI to bypass UPower limitations for Bolt/Unifying receivers.
 
+
+<center><img width="231" height="64" alt="Captura de tela de 2026-06-16 18-21-42" src="https://github.com/user-attachments/assets/d75e6e20-5435-4348-b14f-648ad6154b6b" /> </center>
+
 ## ✨ Features
 
 - **Dual Interface:** Provides a unified experience by displaying individual battery indicators on the **Top Panel** and grouping them under a dedicated expandable pill in the **Quick Settings** menu.
