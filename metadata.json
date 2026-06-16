@@ -1,10 +1,10 @@
 {
-  "uuid": "solaar-individual-battery@marcus.local",
+  "uuid": "solaar-individual-battery@markuusbrdev",
   "name": "Solaar Individual Battery",
   "description": "Shows individual battery status for Logitech devices using Solaar CLI.",
   "shell-version": [
     "50"
   ],
-  "url": "https://github.com/marcus/solaar-individual-battery",
+  "url": "https://github.com/markuusbrdev/solaar-individual-battery",
   "version": 1
 }
